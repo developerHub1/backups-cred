@@ -62,12 +62,14 @@ jobs:
       - name: Mirror-clone PRIVATE repo (all branches, tags, refs)
         run: |
           git clone "git@github.com:${PRIVATE_REPO}.git" repo-mirror.git
+          cd repo-mirror.git
+          git fetch --all
 
       - name: Compute metadata
         id: meta
         run: |
           # HEAD in a mirror clone points at the default branch's tip.
-          DEFAULT_SHA="noneed"
+          DEFAULT_SHA=$(git --git-dir=repo-mirror.git rev-parse --short=7 HEAD)
           TIMESTAMP=$(date -u +'%Y-%m-%d-%H%M')
 
           if [ "${EVENT_NAME}" = "schedule" ]; then
