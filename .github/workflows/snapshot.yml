@@ -67,7 +67,7 @@ jobs:
         id: meta
         run: |
           # HEAD in a mirror clone points at the default branch's tip.
-          DEFAULT_SHA=$(git --git-dir=repo-mirror.git/.git rev-parse --short=7 HEAD)
+          DEFAULT_SHA="noneed"
           TIMESTAMP=$(date -u +'%Y-%m-%d-%H%M')
 
           if [ "${EVENT_NAME}" = "schedule" ]; then
