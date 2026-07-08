@@ -63,8 +63,9 @@ jobs:
         run: |
           git clone "git@github.com:${PRIVATE_REPO}.git" repo-mirror.git
           cd repo-mirror.git
-          git branch
-          git fetch --all
+          # Loop through all remote branches and create a local tracking branch for each
+          for remote in `git branch -r | grep -v '\->'`; do git branch --track ${remote#origin/} $remote; done
+          # Now git branch will show all 6!
           git branch
 
       - name: Compute metadata
