@@ -1,0 +1,98 @@
+name: Repo Mirror Backup (Receives Private Repo Requests)
+
+# Lives in the PUBLIC repo.
+#
+# This does a FULL MIRROR backup (git clone --mirror) of the private repo:
+# every branch, every tag, every ref, full history — raw git data, not a
+# checked-out working tree. This is a git-data backup, not a "browsable
+# folder of source files" snapshot.
+#
+# Three ways this can run:
+#   1. repository_dispatch -> from the private repo's push trigger.
+#                             Branch/sha are used only for the filename
+#                             label (the mirror itself always contains
+#                             everything regardless).
+#   2. workflow_dispatch   -> manual run, optional branch/sha for the label.
+#   3. schedule (cron)     -> periodic full mirror backup, filename marked
+#                             "scheduled" since there's no branch/sha context.
+
+on:
+  repository_dispatch:
+    types: [snapshot-request]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch that triggered this (optional, label only)'
+        required: false
+        default: ''
+      sha:
+        description: 'Commit SHA (optional, label only)'
+        required: false
+        default: ''
+  schedule:
+    # Runs twice daily: 06:00 and 18:00 UTC.
+    - cron: '0 6,18 * * *'
+
+jobs:
+  mirror-backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PRIVATE_REPO: gurujadhav/testify-labs-monorepo
+      EVENT_NAME: ${{ github.event_name }}
+      BRANCH: ${{ github.event.client_payload.branch || github.event.inputs.branch }}
+      SHA: ${{ github.event.client_payload.sha || github.event.inputs.sha }}
+
+    steps:
+      - name: Mirror-clone PRIVATE repo (all branches, tags, refs)
+        env:
+          PRIVATE_TOKEN: ${{ secrets.PRIVATE_REPO_READ_TOKEN }}
+        run: |
+          if [ -z "$PRIVATE_TOKEN" ]; then
+            echo "::error::PRIVATE_REPO_READ_TOKEN secret is not set."
+            exit 1
+          fi
+
+          git clone --mirror "https://x-access-token:${PRIVATE_TOKEN}@github.com/${PRIVATE_REPO}.git" repo-mirror.git
+
+      - name: Compute metadata
+        id: meta
+        run: |
+          # HEAD in a mirror clone points at the default branch's tip.
+          DEFAULT_SHA=$(git --git-dir=repo-mirror.git rev-parse --short=7 HEAD)
+          TIMESTAMP=$(date -u +'%Y-%m-%d-%H%M')
+
+          if [ "${EVENT_NAME}" = "schedule" ]; then
+            SNAPSHOT_NAME="scheduled-${TIMESTAMP}"
+          else
+            SAFE_BRANCH=$(echo "${BRANCH:-unknown}" | tr '/' '-' | tr -cd '[:alnum:]-_')
+            SHORT_SHA="${SHA:0:7}"
+            SHORT_SHA="${SHORT_SHA:-$DEFAULT_SHA}"
+            SNAPSHOT_NAME="${SAFE_BRANCH}-${SHORT_SHA}-${TIMESTAMP}"
+          fi
+
+          echo "snapshot_name=$SNAPSHOT_NAME" >> "$GITHUB_OUTPUT"
+          echo "Snapshot name: $SNAPSHOT_NAME (trigger: ${EVENT_NAME}, default branch HEAD: ${DEFAULT_SHA})"
+
+      - name: Zip mirror with password
+        env:
+          ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
+        run: |
+          if [ -z "$ZIP_PASSWORD" ]; then
+            echo "::error::ZIP_PASSWORD secret is not set."
+            exit 1
+          fi
+
+          sudo apt-get update -y -qq
+          sudo apt-get install -y -qq zip
+
+          # No -x exclusions here — the whole bare repo IS the backup.
+          zip -r -P "$ZIP_PASSWORD" "${{ steps.meta.outputs.snapshot_name }}.zip" repo-mirror.git
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.snapshot_name }}
+          path: ${{ steps.meta.outputs.snapshot_name }}.zip
+          retention-days: ${{ vars.SNAPSHOT_RETENTION_DAYS || 30 }}
