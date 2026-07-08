@@ -61,13 +61,17 @@ jobs:
 
       - name: Mirror-clone PRIVATE repo (all branches, tags, refs)
         run: |
+          Run git clone "git@github.com:${PRIVATE_REPO}.git" repo-mirror.git
           git clone "git@github.com:${PRIVATE_REPO}.git" repo-mirror.git
           cd repo-mirror.git
-          # Loop through all remote branches and create a local tracking branch for each
-          for remote in `git branch -r | grep -v '\->'`; do git branch --track ${remote#origin/} $remote; done
+          # Loop through remote branches. If creating the branch fails (because it exists), ignore the error.
+          for remote in `git branch -r | grep -v '\->'`; do 
+          git branch --track ${remote#origin/} $remote || true
+          done
+
           # Now git branch will show all 6!
           git branch
-
+  
       - name: Compute metadata
         id: meta
         run: |
