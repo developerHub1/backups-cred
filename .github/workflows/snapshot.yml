@@ -61,7 +61,7 @@ jobs:
 
       - name: Mirror-clone PRIVATE repo (all branches, tags, refs)
         run: |
-          git clone --mirror "git@github.com:${PRIVATE_REPO}.git" repo-mirror.git
+          git clone "git@github.com:${PRIVATE_REPO}.git" repo-mirror.git
 
       - name: Compute metadata
         id: meta
